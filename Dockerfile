@@ -1,45 +1,34 @@
-FROM mono:4
+FROM mono:4.6
 MAINTAINER Dmitry  K "d.p.karpov@gmail.com"
 
-ENV DUPLICATI_VER 2.0.0.97_preview_2016-01-12
+ENV DUPLICATI_VER 2.0.2.20_canary_2018-02-27
+ENV DUPLICATI_BRANCH canary
 
-ENV D_TIME_ZONE Europe/Moscow
 ENV D_CODEPAGE UTF-8 
-ENV D_LANG ru_RU
-
-RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup
-RUN echo "Acquire::http {No-Cache=True;};" > /etc/apt/apt.conf.d/no-cache
-ENV DEBIAN_FRONTEND noninteractive
-
-ENV HOME /root
-
-RUN apt-get update && \
-apt-get -y -o Dpkg::Options::="--force-confold" install --no-install-recommends \
-    expect \
-    libsqlite3-0 \
-    unzip \
-    locales && \
-curl -sSL http://updates.duplicati.com/preview/duplicati-${DUPLICATI_VER}.zip -o /duplicati-${DUPLICATI_VER}.zip && \
-unzip duplicati-${DUPLICATI_VER}.zip -d /app && \
-apt-get purge -y --auto-remove unzip && \
-apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Issues with CloudFiles, Skydrive, GoogleDocs and S3
-# CloudFiles, Skydrive, GoogleDocs and S3 use SSL which requires you to trust their certificate issuer. 
-# Run this command to let Mono use the same certificates that Mozilla (Firefox) uses:
-# https://code.google.com/p/duplicati/wiki/LinuxHowto#Issues_with_,_Skydrive,_and_S3
-# /usr/bin/mozroots --import --sync 
-RUN /usr/bin/mozroots --import --sync
-
-# Set locale (fix the locale warnings)
-RUN localedef -v -c -i ${D_LANG} -f ${D_CODEPAGE} ${D_LANG}.${D_CODEPAGE} || : && \
-update-locale LANG=${D_LANG}.${D_CODEPAGE} && \
-echo "${D_TIME_ZONE}" > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata
+ENV D_LANG en_US
 
 ADD ./entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
-VOLUME /root/.config/Duplicati/
+RUN apt-get -o Acquire::ForceIPv4=true -o Acquire::http::No-Cache=True update && \
+    DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::ForceIPv4=true -o Acquire::http::No-Cache=True -o Dpkg::Options::=--force-confold install -y --no-install-recommends \
+        expect \
+        libsqlite3-0 \
+        unzip \
+        locales && \
+    curl -sSL https://updates.duplicati.com/${DUPLICATI_BRANCH}/duplicati-${DUPLICATI_VER}.zip -o /duplicati-${DUPLICATI_VER}.zip && \
+    unzip duplicati-${DUPLICATI_VER}.zip -d /app && \
+    rm /duplicati-${DUPLICATI_VER}.zip && \
+    localedef -v -c -i ${D_LANG} -f ${D_CODEPAGE} ${D_LANG}.${D_CODEPAGE} || : && \
+    update-locale LANG=${D_LANG}.${D_CODEPAGE} && \
+    cert-sync /etc/ssl/certs/ca-certificates.crt && \
+    apt-get purge -y --auto-remove unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    chmod a+x /entrypoint.sh
+
+VOLUME /root/.config/Duplicati
+VOLUME /docker-entrypoint-init.d
+
 EXPOSE 8200
-ENTRYPOINT ["/entrypoint.sh"]
 
+ENTRYPOINT ["/entrypoint.sh"]
